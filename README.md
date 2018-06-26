@@ -63,5 +63,11 @@ Import transactions from a file to Ontology Chain
 	[aaron@localhost txreplay]$ ./txreplay tximport --ip 139.219.128.213 --rpcport 20336 --importtxsfile txs-20180626
 	Tue Jun 26 09:09:00 UTC 2018 Start import Txs...
 	Tue Jun 26 09:09:07 UTC 2018 Sent tx count 792, errNum 0
+	...
+	Tue Jun 26 09:20:04 UTC 2018 Sent tx count 75514, errNum 0
+	Tue Jun 26 09:20:11 UTC 2018 Sent tx count 76281, errNum 0
+	Tue Jun 26 09:20:14 UTC 2018 Sent tx count 76642, errNum 0
+	Tue Jun 26 09:20:14 UTC 2018 Import Txs complete, total txs 76642 sent txs 76642 errNum 0
+
 
 
