@@ -27,6 +27,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gosuri/uiprogress"
@@ -136,8 +137,55 @@ var TxImportCommand = cli.Command{
 		HostIPFlag,
 		RPCPortFlag,
 		ImportTxFileFlag,
+		RoutineNumFlag,
+		TimerFlag,
 	},
 	Description: "",
+}
+
+type worker struct {
+	mu     sync.RWMutex
+	txC    chan string
+	count  int
+	errNum int
+}
+
+func (this *worker) init() {
+	this.txC = make(chan string, 1024)
+}
+
+func (this *worker) run(delay uint, wg *sync.WaitGroup) {
+	rateLimiter := time.NewTicker(time.Millisecond * time.Duration(delay))
+	for {
+		select {
+		case tx, ok := <-this.txC:
+			if ok {
+				this.mu.Lock()
+				err := utils.SendRawTransaction(tx)
+				if err != nil {
+					fmt.Printf("failed to send rpc reqeust. tx %s err %v\n",
+						tx, err)
+					this.errNum++
+					this.mu.Unlock()
+					<-rateLimiter.C
+					continue
+				}
+				this.count++
+				this.mu.Unlock()
+				<-rateLimiter.C
+			} else {
+				wg.Done()
+				rateLimiter.Stop()
+				return
+			}
+		}
+	}
+}
+
+func (this *worker) getStats() (int, int) {
+	this.mu.RLock()
+	defer this.mu.RUnlock()
+	return this.count, this.errNum
 }
 
 func importTxs(ctx *cli.Context) {
@@ -150,6 +198,16 @@ func importTxs(ctx *cli.Context) {
 		fmt.Println("Missing file argument")
 		cli.ShowSubcommandHelp(ctx)
 		return
+	}
+
+	routineNum := int(ctx.Uint(GetFlagName(RoutineNumFlag)))
+	delay := ctx.Uint(GetFlagName(TimerFlag))
+	workers := make([]worker, routineNum)
+	var wg sync.WaitGroup
+	for i := 0; i < routineNum; i++ {
+		workers[i].init()
+		wg.Add(1)
+		go workers[i].run(delay, &wg)
 	}
 
 	ifile, err := os.OpenFile(txFile, os.O_RDONLY, 0644)
@@ -166,9 +224,10 @@ func importTxs(ctx *cli.Context) {
 
 	var txs []string
 	count := 0
+	i := 0
 	summary := 0
 	errNum := 0
-	rateLimiter := time.NewTicker(time.Millisecond * 1)
+
 	for {
 		line, err := fReader.ReadString('\n')
 		if err == io.EOF {
@@ -176,16 +235,18 @@ func importTxs(ctx *cli.Context) {
 		}
 		if strings.HasPrefix(line, "Block ") {
 			for _, tx := range txs {
-				err := utils.SendRawTransaction(tx)
-				if err != nil {
-					fmt.Printf("failed to send rpc reqeust. tx %s err %v\n", tx, err)
-					errNum++
-					continue
-				}
-				summary++
-				<-rateLimiter.C
+				workers[i%routineNum].txC <- tx
+				i++
+				i = i % routineNum
 			}
 			if len(txs) != 0 {
+				summary = 0
+				errNum = 0
+				for i := 0; i < routineNum; i++ {
+					count, err := workers[i].getStats()
+					summary += count
+					errNum += err
+				}
 				fmt.Printf("%s Sent tx count %d, errNum %d\n",
 					time.Now().UTC().Format(time.UnixDate), summary, errNum)
 			}
@@ -205,17 +266,23 @@ func importTxs(ctx *cli.Context) {
 	}
 
 	for _, tx := range txs {
-		err := utils.SendRawTransaction(tx)
-		if err != nil {
-			fmt.Printf("failed to send rpc reqeust. tx %s err %v\n", tx, err)
-			errNum++
-			continue
-		}
-		summary++
-		<-rateLimiter.C
+		workers[i%routineNum].txC <- tx
+		i++
+		i = i % routineNum
 	}
 
+	for i = 0; i < routineNum; i++ {
+		close(workers[i].txC)
+	}
+	wg.Wait()
+
+	summary = 0
+	errNum = 0
+	for i = 0; i < routineNum; i++ {
+		count, err := workers[i].getStats()
+		summary += count
+		errNum += err
+	}
 	fmt.Printf("%s Import Txs complete, total txs %d sent txs %d errNum %d\n",
 		time.Now().UTC().Format(time.UnixDate), count, summary, errNum)
-	rateLimiter.Stop()
 }

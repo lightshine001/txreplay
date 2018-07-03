@@ -59,6 +59,17 @@ var (
 		Usage: "Json rpc server listening port",
 		Value: 20336,
 	}
+
+	RoutineNumFlag = cli.UintFlag{
+		Name:  "routinenum",
+		Usage: "concurrent routine number",
+		Value: 1,
+	}
+	TimerFlag = cli.UintFlag{
+		Name:  "constanttimer",
+		Usage: "constant timer delay (ms)",
+		Value: 1,
+	}
 )
 
 //GetFlagName deal with short flag, and return the flag name whether flag name have short name
