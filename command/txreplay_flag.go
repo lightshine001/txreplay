@@ -21,6 +21,7 @@ package command
 import (
 	"strings"
 
+	"github.com/ontio/ontology/common/config"
 	"github.com/urfave/cli"
 )
 
@@ -69,6 +70,11 @@ var (
 		Name:  "constanttimer",
 		Usage: "constant timer delay (ms)",
 		Value: 1,
+	}
+	NetworkIdFlag = cli.UintFlag{
+		Name:  "networkid",
+		Usage: "Using to specify the network ID. Different networkids cannot connect to the blockchain network. 1=ontology main net, 2=polaris test net, 3=testmode, and other for custom network",
+		Value: config.NETWORK_ID_MAIN_NET,
 	}
 )
 
